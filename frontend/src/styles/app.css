@@ -144,6 +144,11 @@
 .visit-chip.in_window { background: var(--status-warning-bg); color: #6d4c00; }
 .visit-chip.upcoming { background: #f1f4f8; color: #5a6574; }
 .visit-chip.done { background: var(--status-good-bg); color: #0b6b2c; }
+.visit-chip.skipped {
+  background: repeating-linear-gradient(45deg, #f2f3f6, #f2f3f6 4px, #e7e9ee 4px, #e7e9ee 8px);
+  color: #7d8796;
+}
+.visit-chip.missed { background: #ece7f7; color: #5d4a93; }
 
 /* ---------- 表格 / 列表适配 ---------- */
 .table-scroll { overflow-x: auto; }

@@ -23,6 +23,18 @@ const router = createRouter({
           meta: { title: '受试者', icon: 'User' },
         },
         {
+          path: 'visit-plans',
+          name: 'visit-plans',
+          component: () => import('@/views/VisitPlanView.vue'),
+          meta: { title: '访视计划', icon: 'Calendar' },
+        },
+        {
+          path: 'visit-plans/subjects/:id',
+          name: 'visit-plan-detail',
+          component: () => import('@/views/VisitScheduleView.vue'),
+          meta: { title: '受试者访视日程', hidden: true },
+        },
+        {
           path: 'subjects/:id',
           name: 'subject-detail',
           component: () => import('@/views/SubjectDetailView.vue'),

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import tz
 from ..database import get_db
 from ..deps import get_current_user, visible_site_ids
 from ..domain import (
@@ -30,6 +31,7 @@ VISIT_STATE_LABELS = {
     VisitState.OVERDUE: "逾期",
     VisitState.OUT_OF_WINDOW: "超窗",
     VisitState.DONE: "已完成",
+    VisitState.SKIPPED: "已跳过",
     VisitState.MISSED: "已失访",
 }
 
@@ -75,9 +77,7 @@ def dashboard(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    today = date.today()
     site_ids = visible_site_ids(current)
-
     site_q = select(Site)
     if site_ids is not None:
         site_q = site_q.where(Site.id.in_(site_ids))
@@ -135,9 +135,11 @@ def dashboard(
             )
         )
 
+        # 窗期“今天”按研究中心所在时区取当地日历日（跨时区/DST 正确）
+        site_today = tz.local_today(site.timezone)
         for subj in site_subjects:
             for v in subj.visits:
-                item = _visit_item(v, subj, site, today)
+                item = _visit_item(v, subj, site, site_today)
                 if item.visit_state == VisitState.DUE_TODAY.value:
                     all_today.append(item)
                 elif item.visit_state == VisitState.OVERDUE.value:

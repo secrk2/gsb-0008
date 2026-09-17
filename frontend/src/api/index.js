@@ -25,3 +25,20 @@ export const metaApi = {
 export const numberApi = {
   audits: (params = {}) => http.get('/api/number-audits', { params }),
 }
+
+export const visitPlanApi = {
+  gantt: (params = {}) => http.get('/api/visit-plans/gantt', { params }),
+  policy: () => http.get('/api/visit-plans/policy'),
+  subjectVisits: (subjectId) => http.get(`/api/visit-plans/subjects/${subjectId}/visits`),
+  reschedule: (visitId, payload) =>
+    http.post(`/api/visit-plans/visits/${visitId}/reschedule`, payload),
+  skip: (visitId, reason) =>
+    http.post(`/api/visit-plans/visits/${visitId}/skip`, { reason }),
+  insertUnscheduled: (subjectId, payload) =>
+    http.post(`/api/visit-plans/subjects/${subjectId}/unscheduled-visits`, payload),
+  publishAmendment: (payload) =>
+    http.post('/api/visit-plans/amendments/publish', payload),
+  // 导出需带鉴权头：用 blob 拉取后本地触发下载
+  exportCsv: (params = {}) =>
+    http.get('/api/visit-plans/export.csv', { params, responseType: 'blob' }),
+}

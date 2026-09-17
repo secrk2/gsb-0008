@@ -1,15 +1,19 @@
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import tz, visit_service
 from ..database import get_db
 from ..deps import assert_site_access, get_current_user, visible_site_ids
 from ..domain import (
     ACTION_LABELS,
+    AMENDMENT_FREEZE_TEXT,
+    ANCHOR_POLICY_TEXT,
     Action,
     ALLOWED_TRANSITIONS,
+    COMPLETION_POLICY_TEXT,
     IllegalTransitionError,
     STATUS_LABELS,
     SubjectStatus,
@@ -40,14 +44,23 @@ from ..schemas import (
     SubjectListItem,
     SubjectOutCreated,
     TransitionIn,
+    VisitCompletionOut,
     VisitOut,
 )
-from .dashboard import VISIT_STATE_LABELS, serialize_site
+from .dashboard import VISIT_STATE_LABELS
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
 
 KIND_LABELS = {"screening": "筛选号", "subject": "受试者编号"}
 NUMBER_STATUS_LABELS = {"assigned": "已分配", "voided": "已作废"}
+VISIT_STATUS_LABELS = {
+    "scheduled": "已计划",
+    "done": "已完成",
+    "skipped": "已跳过",
+    "unscheduled": "计划外",
+    "missed": "已失访",
+    "locked": "已锁库",
+}
 
 
 def _mask_phone(phone: str | None) -> str | None:
@@ -128,8 +141,10 @@ def list_subjects(
         )
 
     subjects = list(db.scalars(q.order_by(Subject.id.desc())))
-    today = date.today()
-    return [_list_item(db, s, current, today) for s in subjects]
+    return [
+        _list_item(db, s, current, tz.local_today(s.site.timezone))
+        for s in subjects
+    ]
 
 
 @router.post("", response_model=SubjectOutCreated, status_code=201)
@@ -164,7 +179,7 @@ def create_subject(
         birth_date=body.birth_date,
         phone=body.phone,
         status=SubjectStatus.SCREENING.value,
-        screen_date=date.today(),
+        screen_date=tz.local_today(site.timezone),
         created_by=current.id,
     )
     db.add(subject)
@@ -202,7 +217,7 @@ def _get_subject_or_403(db: Session, subject_id: int, user: User) -> Subject:
         select(Subject)
         .options(
             selectinload(Subject.site),
-            selectinload(Subject.visits),
+            selectinload(Subject.visits).selectinload(Visit.forms),
             selectinload(Subject.histories),
             selectinload(Subject.number_audits),
         )
@@ -221,12 +236,12 @@ def subject_detail(
     current: User = Depends(get_current_user),
 ):
     subject = _get_subject_or_403(db, subject_id, current)
-    today = date.today()
+    today = tz.local_today(subject.site.timezone)
     next_date, next_state = _next_visit_state(subject, today)
     current_status = SubjectStatus(subject.status)
 
     visits = []
-    for v in sorted(subject.visits, key=lambda x: (x.visit_no, x.planned_date)):
+    for v in sorted(subject.visits, key=lambda x: (x.seq if x.seq is not None else 0, x.id)):
         state = visit_state(v.planned_date, today, v.window_before, v.window_after, v.status)
         visits.append(
             VisitOut(
@@ -234,12 +249,21 @@ def subject_detail(
                 visit_no=v.visit_no,
                 name=v.name,
                 planned_date=v.planned_date,
+                nominal_date=v.nominal_date or v.planned_date,
+                divergence_days=(v.planned_date - (v.nominal_date or v.planned_date)).days,
                 window_before=v.window_before,
                 window_after=v.window_after,
                 status=v.status,
+                status_label=VISIT_STATUS_LABELS.get(v.status, v.status),
+                kind=v.kind,
+                locked=bool(v.locked),
                 visit_state=state.value,
                 visit_state_label=VISIT_STATE_LABELS[state],
                 actual_date=v.actual_date,
+                version_label=v.version_label,
+                day_offset=v.day_offset,
+                insert_reason=v.insert_reason,
+                completion=VisitCompletionOut(**visit_service.completion_payload(v)),
             )
         )
 
@@ -319,6 +343,13 @@ def subject_detail(
         visits=visits,
         pii_view_logs=pii_logs,
         allowed_actions=sorted(a.value for a in ALLOWED_TRANSITIONS[current_status]),
+        visit_completion=visit_service.subject_completion_payload(subject),
+        mixed_versions=visit_service.mixed_versions(subject),
+        visit_empty_kind=visit_service.empty_kind(subject),
+        completion_policy_text=COMPLETION_POLICY_TEXT,
+        anchor_policy_text=ANCHOR_POLICY_TEXT,
+        amendment_freeze_text=AMENDMENT_FREEZE_TEXT,
+        site_timezone=subject.site.timezone,
     )
 
 
@@ -357,7 +388,7 @@ def transition_subject(
         code = format_subject_code(site.prefix, seq)
         subject.subject_code = code
         subject.enroll_seq = seq
-        subject.enroll_date = date.today()
+        subject.enroll_date = tz.local_today(site.timezone)
         db.add(
             NumberAudit(
                 site_id=site.id,
@@ -372,7 +403,7 @@ def transition_subject(
             )
         )
 
-    today = date.today()
+    today = tz.local_today(subject.site.timezone)
     if action == Action.COMPLETE:
         subject.completion_date = today
     if action in (Action.DROPOUT, Action.TERMINATE, Action.SCREEN_FAIL, Action.REMOVE):

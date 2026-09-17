@@ -93,23 +93,54 @@
 
           <!-- 访视计划 -->
           <el-tab-pane :label="`访视计划（${subject.visits.length}）`" name="visits">
+            <el-alert type="info" :closable="false" style="margin-bottom:10px">
+              <template #title>
+                完成度按「已完成关键表单数 ÷ 关键表单总数」计算（与访视计划总览、CSV 导出同源一致）；
+                半张表的访视计 0 张。
+                <router-link to="/visit-plans" style="margin-left:8px">在访视计划中查看甘特/改期 →</router-link>
+              </template>
+            </el-alert>
+            <el-alert v-if="subject.mixed_versions" type="error" :closable="false" show-icon
+                      style="margin-bottom:10px"
+                      :title="`跨方案版本：${subject.mixed_versions.frozen_visit_nos.join('、')} 已冻结在 ${subject.mixed_versions.old_label}，未发生访视执行 ${subject.mixed_versions.new_label}。`" />
             <div class="table-scroll">
               <el-table :data="subject.visits" size="small">
-                <el-table-column prop="visit_no" label="访视" width="70" />
-                <el-table-column prop="name" label="名称" min-width="120" />
+                <el-table-column prop="visit_no" label="访视" width="64" />
+                <el-table-column prop="name" label="名称" min-width="110" />
+                <el-table-column label="版本" width="72">
+                  <template #default="{ row }">
+                    <el-tag size="small" effect="plain">{{ row.version_label || '—' }}</el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column label="计划日期" width="110">
                   <template #default="{ row }"><span class="num-mono">{{ row.planned_date }}</span></template>
                 </el-table-column>
-                <el-table-column label="随访窗" width="110">
+                <el-table-column label="随访窗" width="104">
                   <template #default="{ row }">前{{ row.window_before }} / 后{{ row.window_after }}天</template>
                 </el-table-column>
-                <el-table-column label="状态" width="120">
+                <el-table-column label="状态" width="112">
                   <template #default="{ row }">
                     <span :class="['visit-chip', row.visit_state]">● {{ row.visit_state_label }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="实际日期" width="110">
+                <el-table-column label="实际日期" width="104">
                   <template #default="{ row }"><span class="num-mono">{{ row.actual_date || '—' }}</span></template>
+                </el-table-column>
+                <el-table-column label="完成度" width="120">
+                  <template #default="{ row }">
+                    <span class="num-mono" style="font-weight:600">
+                      {{ row.completion ? row.completion.rate + '%' : '—' }}
+                    </span>
+                    <span v-if="row.completion" style="font-size:11px; color:var(--ink-3)">
+                      （{{ row.completion.key_done }}/{{ row.completion.key_total }} 表单）
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="锁库" width="64">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.locked" size="small" type="warning" effect="dark">已锁</el-tag>
+                    <span v-else style="color:var(--ink-3)">—</span>
+                  </template>
                 </el-table-column>
               </el-table>
             </div>

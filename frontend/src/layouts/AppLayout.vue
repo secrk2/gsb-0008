@@ -13,7 +13,7 @@
           v-for="item in menus"
           :key="item.name"
           :to="item.to"
-          :class="['nav-item', { active: route.name === item.name }]"
+          :class="['nav-item', { active: isActive(item) }]"
           @click="drawerOpen = false"
         >
           <el-icon><component :is="item.icon" /></el-icon>
@@ -98,6 +98,7 @@ const restoredVisible = ref(false)
 const menus = [
   { name: 'dashboard', title: '入组作战台', icon: 'DataAnalysis', to: '/dashboard' },
   { name: 'subjects', title: '受试者', icon: 'User', to: '/subjects' },
+  { name: 'visit-plans', title: '访视计划', icon: 'Calendar', to: '/visit-plans' },
 ]
 
 watch([online, serverUp], ([on, up], [prevOn, prevUp]) => {

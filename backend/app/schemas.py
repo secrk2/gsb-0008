@@ -140,17 +140,37 @@ class PiiViewLogItem(BaseModel):
     created_at: datetime
 
 
+class VisitCompletionOut(BaseModel):
+    basis: str = "key_forms"
+    key_total: int = 0
+    key_done: int = 0
+    rate: float = 0.0
+    field_total: int = 0
+    field_submitted: int = 0
+    field_rate: float = 0.0
+    is_complete: bool = False
+
+
 class VisitOut(BaseModel):
     id: int
     visit_no: str
     name: str
     planned_date: date
+    nominal_date: date | None = None
+    divergence_days: int = 0
     window_before: int
     window_after: int
     status: str
+    status_label: str | None = None
+    kind: str = "protocol"
+    locked: bool = False
     visit_state: str
     visit_state_label: str
     actual_date: date | None
+    version_label: str | None = None
+    day_offset: int | None = None
+    insert_reason: str | None = None
+    completion: VisitCompletionOut | None = None
 
 
 class SubjectDetail(SubjectListItem):
@@ -162,6 +182,14 @@ class SubjectDetail(SubjectListItem):
     visits: list[VisitOut]
     pii_view_logs: list[PiiViewLogItem]
     allowed_actions: list[str]
+    # 访视计划：完成度（关键表单个口径）、跨版本并存标记与口径成文说明
+    visit_completion: dict | None = None
+    mixed_versions: dict | None = None
+    visit_empty_kind: str | None = None
+    completion_policy_text: str | None = None
+    anchor_policy_text: str | None = None
+    amendment_freeze_text: str | None = None
+    site_timezone: str | None = None
 
 
 class SubjectCreateIn(BaseModel):
