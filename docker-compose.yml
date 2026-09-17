@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: suyuan-db
+    environment:
+      POSTGRES_DB: suyuan
+      POSTGRES_USER: suyuan
+      POSTGRES_PASSWORD: suyuan_pwd_2026
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # 宿主仅作调试映射，容器内通信走 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U suyuan -d suyuan"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: suyuan-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: suyuan-backend
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg2://suyuan:suyuan_pwd_2026@db:5432/suyuan
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_JWT_SECRET: suyuan-fang-prod-secret-please-change
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "7101:7101"   # 后端固定监听 7101
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: suyuan-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8101:80"     # 经 8101 访问，Nginx 反代 7101
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

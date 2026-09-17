@@ -1,0 +1,95 @@
+:root {
+  /* 品牌 / 表面 */
+  --brand-700: #104281;
+  --brand-600: #184f95;
+  --brand-550: #1c5cab;
+  --brand-500: #256abf;
+  --brand-400: #3987e5;
+  --brand-250: #86b6ef;
+  --brand-100: #cde2fb;
+  --brand-50: #eef5fe;
+
+  --surface: #f4f6fa;
+  --surface-card: #ffffff;
+  --border: #e3e8f0;
+  --ink-1: #1a2230;
+  --ink-2: #525a68;
+  --ink-3: #8a93a3;
+
+  /* 状态色（固定，不挪作系列色；均配合图标/文字，不单靠颜色） */
+  --status-good: #0ca30c;
+  --status-good-bg: #e7f6e7;
+  --status-warning: #b97f00;       /* 浅底上用深色保证对比 */
+  --status-warning-bg: #fdf3d8;
+  --status-serious: #c25a2e;
+  --status-serious-bg: #fde9df;
+  --status-critical: #d03b3b;
+  --status-critical-bg: #fce6e6;
+  --status-info-bg: #e9f1fc;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 3px rgba(20, 40, 80, 0.06), 0 2px 10px rgba(20, 40, 80, 0.05);
+  --sidebar-w: 224px;
+  --header-h: 58px;
+
+  /* 漏斗 ordinal 蓝色阶（已通过调色板校验，浅→深） */
+  --funnel-1: #86b6ef;
+  --funnel-2: #3987e5;
+  --funnel-3: #1c5cab;
+  --funnel-4: #104281;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: var(--surface);
+  color: var(--ink-1);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-title { font-size: 20px; font-weight: 700; margin: 0; }
+.page-sub { color: var(--ink-3); font-size: 13px; margin-top: 4px; }
+.card {
+  background: var(--surface-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+}
+.num-mono { font-variant-numeric: tabular-nums; }
+
+/* 状态点（颜色 + 形状/文字双编码） */
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.good { background: var(--status-good); }
+.status-dot.warning { background: var(--status-warning); }
+.status-dot.serious { background: var(--status-serious); }
+.status-dot.critical { background: var(--status-critical); }
+
+/* Element Plus 主色对齐 */
+:root {
+  --el-color-primary: #1c5cab;
+  --el-color-primary-light-3: #4f85c4;
+  --el-color-primary-light-5: #7aa5d4;
+  --el-color-primary-light-7: #a9c5e4;
+  --el-color-primary-light-8: #c4d7ee;
+  --el-color-primary-light-9: #e9f1fc;
+  --el-color-primary-dark-2: #184f95;
+  --el-border-radius-base: 8px;
+}
+
+/* ---------- 响应式断点：1440 桌面 / 1024 平板 / 390 手机 ---------- */
+.responsive-grid { display: grid; gap: 16px; }
+
+@media (max-width: 1180px) {  /* 1024 平板区间 */
+  :root { --sidebar-w: 64px; }
+}
+@media (max-width: 640px) {   /* 390 手机区间 */
+  :root { --sidebar-w: 0px; --header-h: 54px; }
+  body { font-size: 13px; }
+}
+
+/* 滚动条收敛 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #c9d2df; border-radius: 4px; }
