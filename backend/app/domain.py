@@ -204,6 +204,7 @@ class VisitState(str, Enum):
     OVERDUE = "overdue"        # 逾期（仍在窗内）
     OUT_OF_WINDOW = "out_of_window"  # 超窗
     DONE = "done"
+    SKIPPED = "skipped"        # 已跳过（经研究者确认未执行，区别于失访）
     MISSED = "missed"          # 已标记失访
 
 
@@ -216,6 +217,8 @@ def visit_state(
 ) -> VisitState:
     if status == "done":
         return VisitState.DONE
+    if status == "skipped":
+        return VisitState.SKIPPED
     if status == "missed":
         return VisitState.MISSED
     early = planned - timedelta(days=window_before)

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import scheduling as sch
 from ..database import get_db
 from ..deps import get_current_user, visible_site_ids
 from ..domain import (
@@ -30,6 +31,7 @@ VISIT_STATE_LABELS = {
     VisitState.OVERDUE: "逾期",
     VisitState.OUT_OF_WINDOW: "超窗",
     VisitState.DONE: "已完成",
+    VisitState.SKIPPED: "已跳过",
     VisitState.MISSED: "已失访",
 }
 
@@ -47,8 +49,10 @@ def serialize_site(site: Site) -> SiteOut:
 
 
 def _visit_item(v: Visit, subject: Subject, site: Site, today: date) -> VisitItem:
+    tz = site.timezone
+    local_planned = sch.utc_date_to_local(v.planned_date, tz)
     state = visit_state(
-        v.planned_date, today, v.window_before, v.window_after, v.status
+        local_planned, today, v.window_before, v.window_after, v.status
     )
     return VisitItem(
         id=v.id,
@@ -60,12 +64,12 @@ def _visit_item(v: Visit, subject: Subject, site: Site, today: date) -> VisitIte
         site_name=site.name,
         visit_no=v.visit_no,
         name=v.name,
-        planned_date=v.planned_date,
+        planned_date=local_planned,
         window_before=v.window_before,
         window_after=v.window_after,
         visit_state=state.value,
         visit_state_label=VISIT_STATE_LABELS[state],
-        days_offset=(today - v.planned_date).days,
+        days_offset=(today - local_planned).days,
         status=v.status,
     )
 
@@ -75,7 +79,6 @@ def dashboard(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    today = date.today()
     site_ids = visible_site_ids(current)
 
     site_q = select(Site)
@@ -100,6 +103,7 @@ def dashboard(
     all_oow: list[VisitItem] = []
 
     for site in sites:
+        site_today = sch.site_local_today(site.timezone)
         site_subjects = subs_by_site.get(site.id, [])
         counts = {st: 0 for st in SubjectStatus}
         for subj in site_subjects:
@@ -137,7 +141,7 @@ def dashboard(
 
         for subj in site_subjects:
             for v in subj.visits:
-                item = _visit_item(v, subj, site, today)
+                item = _visit_item(v, subj, site, site_today)
                 if item.visit_state == VisitState.DUE_TODAY.value:
                     all_today.append(item)
                 elif item.visit_state == VisitState.OVERDUE.value:

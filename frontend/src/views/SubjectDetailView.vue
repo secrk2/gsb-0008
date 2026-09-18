@@ -93,25 +93,82 @@
 
           <!-- 访视计划 -->
           <el-tab-pane :label="`访视计划（${subject.visits.length}）`" name="visits">
+            <el-alert
+              v-if="subject.mixed_versions"
+              type="warning" :closable="false" show-icon style="margin-bottom:12px"
+              title="⚠ 该受试者新旧方案并存：已完成/已跳过/锁库访视冻结在旧版本，未发生访视已切换新版本（见版本列）。"
+            />
+            <el-alert type="success" :closable="false" style="margin-bottom:12px"
+                      :title="subject.completion_basis" />
+            <div class="visit-completion">
+              <span>访视关键表单总完成度</span>
+              <el-progress :percentage="subject.completion_percent" :stroke-width="12"
+                           style="flex:1; max-width:320px" />
+              <b class="num-mono">{{ subject.completion_percent }}%（{{ subject.completion_label }}）</b>
+              <el-button type="primary" link @click="$router.push({ path: '/visit-plan', query: { subject: subject.id } })">在访视计划中查看甘特/改期 →</el-button>
+            </div>
+            <el-alert type="info" :closable="false" style="margin:10px 0"
+                      :title="`排程口径：${subject.policy_label}`" />
             <div class="table-scroll">
-              <el-table :data="subject.visits" size="small">
-                <el-table-column prop="visit_no" label="访视" width="70" />
+              <el-table :data="subject.visits" size="small"
+                        :row-class-name="(r) => r.row.locked ? 'locked-row' : ''">
+                <el-table-column prop="visit_no" label="访视" width="68" />
                 <el-table-column prop="name" label="名称" min-width="120" />
-                <el-table-column label="计划日期" width="110">
-                  <template #default="{ row }"><span class="num-mono">{{ row.planned_date }}</span></template>
+                <el-table-column label="版本" width="92">
+                  <template #default="{ row }">
+                    <el-tag size="small"
+                            :type="row.version === subject.active_version ? 'success' : 'danger'"
+                            effect="plain">
+                      {{ row.version === subject.active_version ? '当前' : '旧版' }} {{ row.version }}
+                    </el-tag>
+                  </template>
                 </el-table-column>
-                <el-table-column label="随访窗" width="110">
-                  <template #default="{ row }">前{{ row.window_before }} / 后{{ row.window_after }}天</template>
+                <el-table-column label="类型" width="80">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="row.kind === 'unscheduled' ? 'warning' : 'info'" effect="plain">
+                      {{ row.kind_label }}
+                    </el-tag>
+                  </template>
                 </el-table-column>
-                <el-table-column label="状态" width="120">
+                <el-table-column label="计划日期" width="106">
+                  <template #default="{ row }">
+                    <span class="num-mono">{{ row.planned_date }}</span>
+                    <el-icon v-if="row.pinned" title="手动改期已钉住" color="var(--status-warning)" style="vertical-align:-2px">
+                      <Top />
+                    </el-icon>
+                  </template>
+                </el-table-column>
+                <el-table-column label="随访窗" width="100">
+                  <template #default="{ row }">前{{ row.window_before }}/后{{ row.window_after }}</template>
+                </el-table-column>
+                <el-table-column label="状态" width="104">
                   <template #default="{ row }">
                     <span :class="['visit-chip', row.visit_state]">● {{ row.visit_state_label }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="实际日期" width="110">
+                <el-table-column label="实际日期" width="104">
                   <template #default="{ row }"><span class="num-mono">{{ row.actual_date || '—' }}</span></template>
                 </el-table-column>
+                <el-table-column label="关键表单" width="84">
+                  <template #default="{ row }">
+                    <span class="num-mono">{{ row.key_form_done }}/{{ row.key_form_total }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="锁/锚点" width="90">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.locked" size="small" type="danger" effect="dark">锁库</el-tag>
+                    <el-tooltip v-else :content="row.anchor_mode_label" placement="top">
+                      <el-tag size="small" effect="plain">{{ row.anchor_mode === 'randomization' ? '随机化' : '上次实际' }}</el-tag>
+                    </el-tooltip>
+                  </template>
+                </el-table-column>
               </el-table>
+            </div>
+            <div v-if="subject.visits.some((v) => v.anchor?.conflict)"
+                 class="conflict-note">
+              <el-icon><WarningFilled /></el-icon>
+              部分访视的「随机化方案日」与「上次实际访视日推算日」不一致，已按研究统一口径
+              （{{ subject.policy_label }}）取值，备选日期见访视详情，请勿自行猜测。
             </div>
           </el-tab-pane>
 
@@ -249,7 +306,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  ArrowLeft, View, Share, CircleCloseFilled,
+  ArrowLeft, View, Share, CircleCloseFilled, Top, WarningFilled,
 } from '@element-plus/icons-vue'
 import { subjectApi } from '@/api'
 import StatusTag from '@/components/StatusTag.vue'
@@ -400,4 +457,12 @@ onMounted(load)
 <style scoped>
 :deep(.void-row) { background: var(--status-critical-bg) !important; }
 :deep(.void-row td) { color: #a52020; }
+:deep(.locked-row) { background: #f7f8fa !important; }
+:deep(.locked-row td) { color: var(--ink-3); }
+.visit-completion { display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap; }
+.visit-completion b { color: var(--brand-700); font-size: 15px; }
+.conflict-note {
+  margin-top: 10px; font-size: 12px; color: var(--status-warning);
+  display: flex; gap: 6px; align-items: flex-start; line-height: 1.7;
+}
 </style>

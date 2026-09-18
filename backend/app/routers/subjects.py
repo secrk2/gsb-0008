@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import schedule_service as svc
+from .. import scheduling as sch
 from ..database import get_db
 from ..deps import assert_site_access, get_current_user, visible_site_ids
 from ..domain import (
@@ -13,7 +15,6 @@ from ..domain import (
     IllegalTransitionError,
     STATUS_LABELS,
     SubjectStatus,
-    VisitState,
     format_screening_no,
     format_subject_code,
     mask_name,
@@ -23,6 +24,7 @@ from ..domain import (
 from ..models import (
     NumberAudit,
     PiiViewLog,
+    ProtocolVersion,
     Site,
     Subject,
     SubjectStatusHistory,
@@ -42,7 +44,6 @@ from ..schemas import (
     TransitionIn,
     VisitOut,
 )
-from .dashboard import VISIT_STATE_LABELS, serialize_site
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
 
@@ -59,24 +60,30 @@ def _mask_phone(phone: str | None) -> str | None:
 
 
 def _next_visit_state(subject: Subject, today: date) -> tuple[date | None, str | None]:
+    tz = subject.site.timezone if subject.site else "Asia/Shanghai"
+
+    def local_day(v: Visit) -> date:
+        return sch.utc_date_to_local(v.planned_date, tz)
+
     upcoming = [
-        v
+        (v, local_day(v))
         for v in subject.visits
-        if v.status == "scheduled" and v.planned_date >= today
+        if v.status == "scheduled" and local_day(v) >= today
     ]
     if not upcoming:
         # 窗内但计划日已过的也算待办
-        pending = [v for v in subject.visits if v.status == "scheduled"]
+        pending = [(v, local_day(v)) for v in subject.visits if v.status == "scheduled"]
         if not pending:
             return None, None
-        v = sorted(pending, key=lambda x: x.planned_date, reverse=True)[0]
+        v, planned = sorted(pending, key=lambda x: x[1], reverse=True)[0]
     else:
-        v = sorted(upcoming, key=lambda x: x.planned_date)[0]
-    state = visit_state(v.planned_date, today, v.window_before, v.window_after, v.status)
-    return v.planned_date, state.value
+        v, planned = sorted(upcoming, key=lambda x: x[1])[0]
+    state = visit_state(planned, today, v.window_before, v.window_after, v.status)
+    return planned, state.value
 
 
 def _list_item(db: Session, subj: Subject, user: User, today: date) -> SubjectListItem:
+    local_today = sch.site_local_today(subj.site.timezone if subj.site else "Asia/Shanghai")
     return SubjectListItem(
         id=subj.id,
         site_id=subj.site_id,
@@ -92,8 +99,8 @@ def _list_item(db: Session, subj: Subject, user: User, today: date) -> SubjectLi
         enroll_date=subj.enroll_date,
         end_date=subj.end_date,
         can_reveal=user.role == "investigator" and user.site_id == subj.site_id,
-        next_visit_date=_next_visit_state(subj, today)[0],
-        next_visit_state=_next_visit_state(subj, today)[1],
+        next_visit_date=_next_visit_state(subj, local_today)[0],
+        next_visit_state=_next_visit_state(subj, local_today)[1],
     )
 
 
@@ -202,7 +209,7 @@ def _get_subject_or_403(db: Session, subject_id: int, user: User) -> Subject:
         select(Subject)
         .options(
             selectinload(Subject.site),
-            selectinload(Subject.visits),
+            selectinload(Subject.visits).selectinload(Visit.forms),
             selectinload(Subject.histories),
             selectinload(Subject.number_audits),
         )
@@ -221,27 +228,15 @@ def subject_detail(
     current: User = Depends(get_current_user),
 ):
     subject = _get_subject_or_403(db, subject_id, current)
-    today = date.today()
+    tz_name = subject.site.timezone
+    today = sch.site_local_today(tz_name)
     next_date, next_state = _next_visit_state(subject, today)
     current_status = SubjectStatus(subject.status)
 
-    visits = []
-    for v in sorted(subject.visits, key=lambda x: (x.visit_no, x.planned_date)):
-        state = visit_state(v.planned_date, today, v.window_before, v.window_after, v.status)
-        visits.append(
-            VisitOut(
-                id=v.id,
-                visit_no=v.visit_no,
-                name=v.name,
-                planned_date=v.planned_date,
-                window_before=v.window_before,
-                window_after=v.window_after,
-                status=v.status,
-                visit_state=state.value,
-                visit_state_label=VISIT_STATE_LABELS[state],
-                actual_date=v.actual_date,
-            )
-        )
+    # 访视与完成度统一走 schedule_service，保证与总览/导出三处一致
+    summary = svc.subject_summary(subject, today)
+    visits = [VisitOut(**v) for v in summary["visits"]]
+    rand_date = svc.randomization_date(subject)
 
     ACTION_DISPLAY = {**{a.value: a.label for a in Action}, "register": "筛选登记"}
     histories = [
@@ -319,6 +314,15 @@ def subject_detail(
         visits=visits,
         pii_view_logs=pii_logs,
         allowed_actions=sorted(a.value for a in ALLOWED_TRANSITIONS[current_status]),
+        randomization_date=rand_date,
+        active_version=subject.active_version,
+        mixed_versions=summary["mixed_versions"],
+        completion_percent=summary["completion_percent"],
+        completion_label=summary["completion_label"],
+        completion_basis=svc.COMPLETION_BASIS,
+        policy=svc.STUDY_POLICY.value,
+        policy_label=sch.ANCHOR_POLICY_LABELS[svc.STUDY_POLICY],
+        timezone=tz_name,
     )
 
 
@@ -357,7 +361,10 @@ def transition_subject(
         code = format_subject_code(site.prefix, seq)
         subject.subject_code = code
         subject.enroll_seq = seq
-        subject.enroll_date = date.today()
+        local_today = sch.site_local_today(site.timezone)
+        subject.enroll_date = local_today
+        # 随机化日主锚点（默认等于入组日）
+        subject.randomization_date = local_today
         db.add(
             NumberAudit(
                 site_id=site.id,
@@ -371,6 +378,10 @@ def transition_subject(
                 operator_name=current.full_name,
             )
         )
+        # 入组即按当前生效方案版本生成访视与关键表单实例
+        current_pv = svc.get_current_version(db)
+        if current_pv is not None:
+            svc.instantiate_subject_visits(db, subject, current_pv, rand=local_today)
 
     today = date.today()
     if action == Action.COMPLETE:

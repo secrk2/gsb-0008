@@ -98,6 +98,7 @@ const restoredVisible = ref(false)
 const menus = [
   { name: 'dashboard', title: '入组作战台', icon: 'DataAnalysis', to: '/dashboard' },
   { name: 'subjects', title: '受试者', icon: 'User', to: '/subjects' },
+  { name: 'visit-plan', title: '访视计划', icon: 'Calendar', to: '/visit-plan' },
 ]
 
 watch([online, serverUp], ([on, up], [prevOn, prevUp]) => {

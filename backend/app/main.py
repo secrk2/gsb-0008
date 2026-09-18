@@ -9,7 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import settings
 from .database import Base, engine
 from .redis_client import ping as redis_ping
-from .routers import auth, dashboard, number_audits, sites, subjects
+from .routers import auth, dashboard, number_audits, sites, subjects, visit_plans
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("suyuan")
@@ -76,6 +76,7 @@ app.include_router(sites.router)
 app.include_router(dashboard.router)
 app.include_router(subjects.router)
 app.include_router(number_audits.router)
+app.include_router(visit_plans.router)
 
 
 if __name__ == "__main__":

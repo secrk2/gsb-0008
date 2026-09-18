@@ -23,6 +23,12 @@ const router = createRouter({
           meta: { title: '受试者', icon: 'User' },
         },
         {
+          path: 'visit-plan',
+          name: 'visit-plan',
+          component: () => import('@/views/VisitPlanView.vue'),
+          meta: { title: '访视计划', icon: 'Calendar' },
+        },
+        {
           path: 'subjects/:id',
           name: 'subject-detail',
           component: () => import('@/views/SubjectDetailView.vue'),
